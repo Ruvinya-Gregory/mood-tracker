@@ -1,0 +1,26 @@
+{
+  "name": "mood-theme",
+  "colors": {
+    "accent": "#7C5CFF",
+    "text": {
+      "light": "#0f172a",
+      "dark": "#E6E9F2"
+    },
+    "button": {
+      "light": ["#7C5CFF", "#6A4BF0"],
+      "dark":  ["#9b7bff", "#7C5CFF"]
+    },
+    "frame_low": {
+      "light": "#FFFFFF",
+      "dark": "#151B2B"
+    },
+    "frame_high": {
+      "light": "#F6F8FC",
+      "dark": "#0F1422"
+    },
+    "border": {
+      "light": "#E5E7EB",
+      "dark": "#1F2937"
+    }
+  }
+}
