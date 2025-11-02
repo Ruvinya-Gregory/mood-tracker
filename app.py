@@ -1,7 +1,3 @@
-"""
-customtkinter Mood Tracker — dashboard Home (weekly chart + calendar + tasks),
-Log, Trends, Settings. Dynamic charts, interactive calendar.
-"""
 from __future__ import annotations
 from pathlib import Path
 from datetime import datetime, timedelta, date
@@ -13,15 +9,15 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import pandas as pd
 
 import storage
-import charts as charts  
+import charts as charts 
 
 APP_TITLE = "Haven"
 APP_WIDTH, APP_HEIGHT = 1920, 1080
 DATA_DIR = Path(__file__).parent / "data"
 CSV_PATH = DATA_DIR / "moods.csv"
 
-# --- Accent + neutrals (light, dark)
-ACCENT = ("#7C5CFF", "#9b7bff") 
+
+ACCENT = ("#7C5CFF", "#9b7bff")
 CARD_BG = ("#FFFFFF", "#151B2B")
 APP_BG  = ("#F6F8FC", "#0F1422")
 TEXT_MUTED = ("#64748b", "#9aa3b2")
@@ -34,30 +30,29 @@ class App(ctk.CTk):
         self.geometry(f"{APP_WIDTH}x{APP_HEIGHT}")
         self.minsize(1080, 680)
 
-        # Appearance + base theme
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         self.configure(fg_color=APP_BG)
 
-        # Data
+    
         storage.ensure_data_store(CSV_PATH)
         self.df: pd.DataFrame = storage.load_dataframe(CSV_PATH)
 
-        # Layout
+        
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
+    
         self.sidebar = Sidebar(self, command=self._navigate)
         self.sidebar.grid(row=0, column=0, sticky="nsw")
 
-        # Content stack
+        
         self.container = ctk.CTkFrame(self, fg_color="transparent")
         self.container.grid(row=0, column=1, sticky="nsew")
         self.container.grid_rowconfigure(0, weight=1)
         self.container.grid_columnconfigure(0, weight=1)
 
-        # Pages
+        
         self.page_home = HomePage(
             self.container,
             get_df=lambda: self.df,
@@ -80,7 +75,7 @@ class App(ctk.CTk):
         ]
         self._navigate("Home")
 
-    # ---------- Navigation ----------
+
     def _navigate(self, name: str):
         if name == "Home":
             self.page_home.refresh(self.df, self.tasks)
@@ -93,27 +88,34 @@ class App(ctk.CTk):
         elif name == "Settings":
             self.page_settings.tkraise()
 
-    # ---------- Data flows ----------
+
     def _save_entry(self, mood: int, note: str, tags: list[str]):
         if mood < 1 or mood > 5:
             messagebox.showerror("Invalid", "Please choose a mood between 1 and 5.")
             return
+
         storage.append_entry(CSV_PATH, mood=mood, note=note, tags=tags)
         self.df = storage.load_dataframe(CSV_PATH)
         self.page_log.clear_after_save()
+
+
+        today = date.today()
+        self.page_home.selected_date = today
+        self.page_home.refresh(self.df, self.tasks)
+        self.page_home._on_date_click(today)
+
         self._navigate("Home")
 
     def _filtered_df(self) -> pd.DataFrame:
         if self.df.empty:
             return self.df
-        rng = self.page_trends.range_var.get()
+        rng = getattr(self.page_trends, "range_var", tk.StringVar(value="Last 30 days")).get()
         if rng == "All time":
             return self.df
         days = 7 if "7" in rng else 30
         cutoff = datetime.now() - timedelta(days=days)
         return self.df[self.df["timestamp"] >= cutoff]
 
-    # ---------- Tasks model for Home ----------
     def _home_add_task(self, text: str):
         if text.strip():
             self.tasks.insert(0, {"text": text.strip(), "done": False})
@@ -124,11 +126,10 @@ class App(ctk.CTk):
             self.tasks[idx]["done"] = val
             self.page_home.refresh(self.df, self.tasks)
 
-    # ---------- Theme helpers ----------
+
     def _toggle_theme(self, mode: str):
         ctk.set_appearance_mode(mode)
         self.configure(fg_color=APP_BG)
-        # Re-render charts and UI bits
         self.page_trends.refresh_chart()
         self.page_home.refresh(self.df, self.tasks)
 
@@ -136,7 +137,7 @@ class App(ctk.CTk):
         return "dark" if ctk.get_appearance_mode().lower() == "dark" else "light"
 
 
-# ---------- Sidebar ----------
+
 class Sidebar(ctk.CTkFrame):
     def __init__(self, master, command):
         super().__init__(master, width=220, corner_radius=0, fg_color="transparent")
@@ -167,7 +168,7 @@ class NavButton(ctk.CTkButton):
         )
 
 
-# ---------- Reusable Card ----------
+
 class Card(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, corner_radius=16, **kwargs)
@@ -176,7 +177,6 @@ class Card(ctk.CTkFrame):
         self.pad.pack(fill="both", expand=True, padx=16, pady=16)
 
 
-# ---------- HOME PAGE ----------
 class HomePage(ctk.CTkFrame):
     def __init__(self, master, get_df, get_mode, on_add_task, on_toggle_task):
         super().__init__(master, fg_color="transparent")
@@ -185,26 +185,21 @@ class HomePage(ctk.CTkFrame):
         self.on_add_task = on_add_task
         self.on_toggle_task = on_toggle_task
 
-        # Calendar state
         today = date.today()
         self.cal_year = today.year
         self.cal_month = today.month
         self.selected_date: date | None = None
 
-        # Grid: 2 columns (main, right)
         self.grid_columnconfigure(0, weight=3)
         self.grid_columnconfigure(1, weight=2)
         self.grid_rowconfigure(2, weight=1)
 
-        # Header row
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         ctk.CTkLabel(header, text="Hi, there 👋", font=ctk.CTkFont(size=20, weight="bold")).pack(side="left", padx=(4, 10))
         self.search = ctk.CTkEntry(header, placeholder_text="Search entries…", width=280)
         self.search.pack(side="left")
 
-        # MAIN COLUMN
-        # Weekly Mood Tracker
         self.tracker_card = Card(self)
         self.tracker_card.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=(10, 8))
         title_row = ctk.CTkFrame(self.tracker_card.pad, fg_color="transparent")
@@ -215,7 +210,6 @@ class HomePage(ctk.CTkFrame):
 
         self.week_canvas = None 
 
-        # Recent Entries grid
         self.recent_card = Card(self)
         self.recent_card.grid(row=2, column=0, sticky="nsew", padx=(0, 10), pady=(8, 10))
         head = ctk.CTkFrame(self.recent_card.pad, fg_color="transparent")
@@ -224,8 +218,7 @@ class HomePage(ctk.CTkFrame):
         self.recent_grid = ctk.CTkFrame(self.recent_card.pad, fg_color="transparent")
         self.recent_grid.pack(fill="both", expand=True, pady=(6, 0))
 
-        # RIGHT COLUMN
-        # Calendar
+
         self.calendar_card = Card(self)
         self.calendar_card.grid(row=1, column=1, sticky="nsew", pady=(10, 8))
         cal_header = ctk.CTkFrame(self.calendar_card.pad, fg_color="transparent")
@@ -237,7 +230,7 @@ class HomePage(ctk.CTkFrame):
         self.calendar_grid = ctk.CTkFrame(self.calendar_card.pad, fg_color="transparent")
         self.calendar_grid.pack(fill="x", pady=(6, 0))
 
-        # Day entries panel
+
         self.day_card = Card(self)
         self.day_card.grid(row=2, column=1, sticky="nsew", pady=(8, 10))
         self.day_title = ctk.CTkLabel(self.day_card.pad, text="Entries for —", font=ctk.CTkFont(size=16, weight="bold"))
@@ -245,12 +238,7 @@ class HomePage(ctk.CTkFrame):
         self.day_list = ctk.CTkScrollableFrame(self.day_card.pad, height=220, fg_color="transparent")
         self.day_list.pack(fill="both", expand=True, pady=(6, 0))
 
-        # Tasks
-        self.tasks_card = Card(self)
-        self.tasks_card.grid_forget()
-        self.progress = None
 
-    # ---- calendar navigation ----
     def _prev_month(self):
         if self.cal_month == 1:
             self.cal_month = 12
@@ -271,14 +259,11 @@ class HomePage(ctk.CTkFrame):
             self.selected_date = None
         self._build_calendar(self.get_df())
 
-    # ---- calendar builders ----
     def _build_calendar(self, df: pd.DataFrame):
-
         for w in self.calendar_grid.winfo_children():
             w.destroy()
 
         self.month_label.configure(text=f"{calendar.month_name[self.cal_month]} {self.cal_year}")
-
 
         headers = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         for i, h in enumerate(headers):
@@ -286,13 +271,11 @@ class HomePage(ctk.CTkFrame):
 
         cal = calendar.Calendar(firstweekday=0).monthdatescalendar(self.cal_year, self.cal_month)
 
-
         entry_dates = set()
         if df is not None and not df.empty:
             d = df.copy()
             d["date"] = pd.to_datetime(d["timestamp"], errors="coerce").dt.date
             entry_dates = set(d.dropna(subset=["date"])["date"].tolist())
-
 
         for r, week in enumerate(cal, start=1):
             for c, day in enumerate(week):
@@ -344,9 +327,8 @@ class HomePage(ctk.CTkFrame):
             line = f"[{ttxt}]  Mood {mood} — {note}"
             ctk.CTkLabel(self.day_list, text=line, wraplength=420, justify="left").pack(anchor="w", padx=6, pady=3)
 
-
     def refresh(self, df: pd.DataFrame, tasks: list[dict]):
-        # Weekly chart
+ 
         mode = self.get_mode()
         week_start = (date.today() - timedelta(days=date.today().weekday()))
         week_end = week_start + timedelta(days=6)
@@ -480,6 +462,7 @@ class LogPage(ctk.CTkFrame):
         self.note.delete("0.0", "end")
         for v in self.tag_vars.values():
             v.set(False)
+
 
 
 class TrendsPage(ctk.CTkFrame):

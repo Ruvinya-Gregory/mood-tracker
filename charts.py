@@ -2,7 +2,9 @@ from __future__ import annotations
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+import numpy as np
+
 
 def _palette(mode: str):
     if str(mode).lower() == "light":
@@ -12,9 +14,9 @@ def _palette(mode: str):
             "grid": (0, 0, 0, 0.10),
             "label": "#0f172a",
             "line": "#7C5CFF",
-            "happy": "#22c55e",
-            "neutral": "#64748b",
-            "sad": "#ef4444",
+            "happy": "#16a34a",
+            "neutral": "#475569",
+            "sad": "#e11d48",
             "markeredge": "#ffffff",
         }
     return {
@@ -23,23 +25,27 @@ def _palette(mode: str):
         "grid": (1, 1, 1, 0.18),
         "label": "#E6E9F2",
         "line": "#9b7bff",
-        "happy": "#34d399",
-        "neutral": "#9aa3b2",
+        "happy": "#22c55e",
+        "neutral": "#94a3b8",
         "sad": "#fb7185",
         "markeredge": "#0f1422",
     }
 
+
 def mood_line_chart(df: pd.DataFrame, mode: str = "dark") -> Figure | None:
     if df is None or df.empty:
         return None
-    df = df.sort_values("timestamp")
+    tmp = df.copy()
+    tmp["timestamp"] = pd.to_datetime(tmp["timestamp"], errors="coerce")
+    tmp = tmp.dropna(subset=["timestamp"]).sort_values("timestamp")
     P = _palette(mode)
+
     fig = plt.Figure(figsize=(8.8, 4.8), dpi=120)
     fig.patch.set_facecolor(P["fig"])
     ax = fig.add_subplot(111)
     ax.set_facecolor(P["axes"])
 
-    ax.plot(df["timestamp"], df["mood"], marker="o", linewidth=2.4, color=P["line"],
+    ax.plot(tmp["timestamp"], tmp["mood"], marker="o", linewidth=2.4, color=P["line"],
             markerfacecolor=P["line"], markeredgecolor=P["markeredge"])
     ax.set_ylim(0.8, 5.2)
     ax.set_yticks([1, 2, 3, 4, 5])
@@ -53,37 +59,57 @@ def mood_line_chart(df: pd.DataFrame, mode: str = "dark") -> Figure | None:
     fig.tight_layout()
     return fig
 
+
 def weekly_mood_bar(df: pd.DataFrame, mode: str = "dark") -> Figure | None:
-    """Grouped bars by weekday: Happy (4–5), Neutral (3), Sad (1–2). Uses current week (Mon–Sun)."""
-    from datetime import date
+    """
+    Grouped bars by weekday for the current week (Mon–Sun).
+    Bins: Happy (4–5), Neutral (3), Sad (1–2).
+    """
     P = _palette(mode)
-    today = date.today()
-    start = today - timedelta(days=today.weekday())
-    end = start + timedelta(days=6)
+    today: date = date.today()
+    start = today - timedelta(days=today.weekday())   
+    end = start + timedelta(days=6)                   
 
-    if df is None or df.empty:
-        wk = [start + timedelta(days=i) for i in range(7)]
-        counts = {"Happy": [0]*7, "Neutral": [0]*7, "Sad": [0]*7}
-    else:
-        d = df.copy()
-        d["date"] = pd.to_datetime(d["timestamp"], errors="coerce").dt.date
-        d = d[(d["date"] >= start) & (d["date"] <= end)]
-        d["bin"] = d["mood"].apply(lambda m: "Happy" if m >= 4 else ("Neutral" if m == 3 else "Sad"))
-        wk = [start + timedelta(days=i) for i in range(7)]
-        counts = {"Happy": [], "Neutral": [], "Sad": []}
-        for day in wk:
-            day_df = d[d["date"] == day]
-            counts["Happy"].append((day_df["bin"] == "Happy").sum())
-            counts["Neutral"].append((day_df["bin"] == "Neutral").sum())
-            counts["Sad"].append((day_df["bin"] == "Sad").sum())
-
-    import numpy as np
-    x = np.arange(7); width = 0.25
+    wk = [start + timedelta(days=i) for i in range(7)]
+    x = np.arange(7)
+    width = 0.25
 
     fig = plt.Figure(figsize=(9.5, 3.8), dpi=120)
     fig.patch.set_facecolor(P["fig"])
     ax = fig.add_subplot(111)
     ax.set_facecolor(P["axes"])
+
+    if df is None or df.empty:
+        counts = {"Happy": [0]*7, "Neutral": [0]*7, "Sad": [0]*7}
+    else:
+        tmp = df.copy()
+        tmp["timestamp"] = pd.to_datetime(tmp["timestamp"], errors="coerce")
+        tmp = tmp.dropna(subset=["timestamp"])
+        tmp["date"] = tmp["timestamp"].dt.date
+
+
+        tmp = tmp[(tmp["timestamp"] >= pd.Timestamp(start)) &
+              (tmp["timestamp"] <= pd.Timestamp(end) + pd.Timedelta(days=1))]
+
+        tmp["mood"] = pd.to_numeric(tmp["mood"], errors="coerce").fillna(3).astype(int)
+
+
+        # Bin
+        def mood_bin(m: int) -> str:
+            if m <= 2:
+                return "Sad"
+            if m == 3:
+                return "Neutral"
+            return "Happy"
+
+        tmp["bin"] = tmp["mood"].map(mood_bin)
+
+        counts = {"Happy": [], "Neutral": [], "Sad": []}
+        for day in wk:
+            day_df = tmp[tmp["date"] == day]
+            counts["Happy"].append(int((day_df["bin"] == "Happy").sum()))
+            counts["Neutral"].append(int((day_df["bin"] == "Neutral").sum()))
+            counts["Sad"].append(int((day_df["bin"] == "Sad").sum()))
 
     ax.bar(x - width, counts["Happy"], width, label="Happy", color=P["happy"])
     ax.bar(x,         counts["Neutral"], width, label="Neutral", color=P["neutral"])
